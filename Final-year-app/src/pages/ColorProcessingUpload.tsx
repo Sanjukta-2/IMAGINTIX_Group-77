@@ -19,7 +19,6 @@ const ColorProcessingUpload = () => {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedImage, setProcessedImage] = useState<string | null>(null);
-  const [colorMode, setColorMode] = useState<string>("true-color");
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -42,29 +41,53 @@ const ColorProcessingUpload = () => {
     }
   };
 
-  const handleProcess = () => {
-    if (!uploadedImage) {
-      toast({
-        title: "No image uploaded",
-        description: "Please upload an image first",
-        variant: "destructive",
-      });
-      return;
-    }
+const handleProcess = async () => {
+  const input = document.getElementById("image-upload") as HTMLInputElement;
+  const file = input?.files?.[0];
 
-    setIsProcessing(true);
-    
-    // Simulate processing
-    setTimeout(() => {
-      setProcessedImage(uploadedImage);
-      setIsProcessing(false);
-      toast({
-        title: "Processing complete",
-        description: `Your ${colorMode} image is ready`,
-      });
-    }, 2000);
-  };
+  if (!file) {
+    toast({
+      title: "No image uploaded",
+      description: "Please upload an image first",
+      variant: "destructive",
+    });
+    return;
+  }
 
+  setIsProcessing(true);
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const response = await fetch(
+      "http://localhost:8000/api/color-processing",
+      {
+        method: "POST",
+        body: formData,
+      }
+    );
+
+    if (!response.ok) throw new Error();
+
+    const data = await response.json();
+    setProcessedImage(data.image_url);
+
+    toast({
+      title: "Processing complete",
+      description: "False color image converted to true color",
+    });
+  } catch (error) {
+    console.error(error); // 👈 IMPORTANT for debugging
+    toast({
+      title: "Processing failed",
+      description: "Something went wrong",
+      variant: "destructive",
+    });
+  } finally {
+    setIsProcessing(false);
+  }
+};
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border">
@@ -90,7 +113,7 @@ const ColorProcessingUpload = () => {
               Color Processing
             </h1>
             <p className="text-xl text-muted-foreground">
-              Convert between true color and false color composites
+              Convert False color to True color composites
             </p>
           </div>
 
@@ -129,22 +152,13 @@ const ColorProcessingUpload = () => {
                       alt="Uploaded"
                       className="w-full rounded-lg"
                     />
-                    
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-foreground">
-                        Processing Mode
-                      </label>
-                      <Select value={colorMode} onValueChange={setColorMode}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="true-color">True Color</SelectItem>
-                          <SelectItem value="false-color">False Color (Vegetation)</SelectItem>
-                          <SelectItem value="false-color-urban">False Color (Urban)</SelectItem>
-                          <SelectItem value="false-color-water">False Color (Water)</SelectItem>
-                        </SelectContent>
-                      </Select>
+                    <div className="p-3 bg-muted rounded-lg">
+                      <p className="text-sm text-muted-foreground">
+                        Conversion: 
+                        <span className="font-medium text-foreground">
+                          {" "}False Color → True Color
+                        </span>
+                      </p>
                     </div>
 
                     <Button
@@ -172,7 +186,7 @@ const ColorProcessingUpload = () => {
                   />
                   <div className="p-3 bg-muted rounded-lg">
                     <p className="text-sm text-muted-foreground">
-                      Mode: <span className="font-medium text-foreground">{colorMode}</span>
+                      Mode: <span className="font-medium text-foreground">False → True Color</span>
                     </p>
                   </div>
                   <Button variant="outline" className="w-full">
