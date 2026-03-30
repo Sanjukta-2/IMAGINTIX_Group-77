@@ -1,3 +1,7 @@
+# Ignore uploads and outputs
+Final-year-app/backend/uploads/
+Final-year-app/backend/outputs/
+
 # Logs
 logs
 *.log
