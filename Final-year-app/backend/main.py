@@ -1,11 +1,20 @@
+import numpy as np
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 import os
 import uuid
 from PIL import Image
-
-from utils import preprocess_image, postprocess_image
+import tensorflow as tf
+from utils import (
+    ResidualBlock,          # import triggers @register decorator
+    preprocess_image,
+    postprocess_image,
+    composite_output,
+    preprocess_image_cloud,
+    postprocess_image_cloud,
+    IMG_SIZE,
+)
 from models import run_inference, run_color_inference
 
 app = FastAPI()
@@ -72,10 +81,34 @@ async def cloud_removal(file: UploadFile = File(...)):
     # Open image
     image = Image.open(input_path).convert("RGB")
 
-    # Preprocess → GAN → Postprocess
-    image_array = preprocess_image(image,size=(128,128))
-    prediction = run_inference(image_array)
-    output_image = postprocess_image(prediction)
+    # Remember original size to restore after inference
+    original_size = image.size   # (width, height)
+
+    gen_input, cloud_mask = preprocess_image_cloud(image)   # [1,256,256,4], [256,256,1]
+
+    # ── Inference ────────────────────────────────────────────
+    prediction = run_inference(gen_input)              # [1,256,256,3]
+
+    # ── Composite: replace only cloud pixels ─────────────────
+    original_rgb = gen_input[0, :, :, :3]             # [256,256,3] in [-1,1]
+    composited   = composite_output(
+        original   = original_rgb,
+        prediction = prediction[0],
+        cloud_mask = cloud_mask,
+        blend_px   = 5
+    )                                                  # [256,256,3] in [-1,1]
+
+    # ── Postprocess ──────────────────────────────────────────
+    output_image = postprocess_image_cloud(composited[np.newaxis])  # PIL Image at 256×256
+
+    # Restore to original uploaded resolution
+    if original_size != (IMG_SIZE, IMG_SIZE):
+        output_image = output_image.resize(original_size, Image.BILINEAR)
+
+    # # Preprocess → GAN → Postprocess
+    # image_array = preprocess_image(image,size=(128,128))
+    # prediction = run_inference(image_array)
+    # output_image = postprocess_image(prediction)
 
     # Save output
     output_name = f"processed_{input_name}.png"
