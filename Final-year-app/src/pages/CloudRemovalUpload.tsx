@@ -34,8 +34,11 @@ const CloudRemovalUpload = () => {
     }
   };
 
-  const handleProcess = () => {
-    if (!uploadedImage) {
+  const handleProcess = async () => {
+    const input = document.getElementById("image-upload") as HTMLInputElement;
+    const file = input?.files?.[0];
+
+    if (!file) {
       toast({
         title: "No image uploaded",
         description: "Please upload an image first",
@@ -45,17 +48,43 @@ const CloudRemovalUpload = () => {
     }
 
     setIsProcessing(true);
-    
-    // Simulate processing
-    setTimeout(() => {
-      setProcessedImage(uploadedImage);
-      setIsProcessing(false);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const response = await fetch(
+        "http://localhost:8000/api/cloud-removal",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Backend processing failed");
+      }
+
+      const data = await response.json();
+
+      // Backend returns URL of processed image
+      setProcessedImage(data.image_url);
+
       toast({
         title: "Processing complete",
         description: "Your de-clouded image is ready",
       });
-    }, 2000);
+    } catch (error) {
+      toast({
+        title: "Processing failed",
+        description: "Unable to process image. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
+
 
   return (
     <div className="min-h-screen bg-background">

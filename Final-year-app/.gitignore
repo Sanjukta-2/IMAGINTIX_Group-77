@@ -1,3 +1,7 @@
+# Ignore uploads and outputs
+backend/uploads/
+backend/outputs/
+
 # Logs
 logs
 *.log
@@ -22,3 +26,16 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python
+backend/gan-venv/
+backend/venv/
+**/__pycache__/
+*.keras
+
+# Node
+node_modules/
+
+# Environment
+.env
+
