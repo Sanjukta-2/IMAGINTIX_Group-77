@@ -71,9 +71,12 @@ const Index = () => {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem className="cursor-pointer">
-                  Contact Us
-                </DropdownMenuItem>
+                    <DropdownMenuItem 
+                className="cursor-pointer"
+               onClick={() => navigate("/contact")}
+                     >
+                      Contact Us
+                   </DropdownMenuItem>
                 <DropdownMenuItem className="cursor-pointer">
                   Profile
                 </DropdownMenuItem>

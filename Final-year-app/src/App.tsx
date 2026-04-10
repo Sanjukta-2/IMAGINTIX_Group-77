@@ -8,6 +8,8 @@ import Index from "./pages/Index";
 import CloudRemovalUpload from "./pages/CloudRemovalUpload";
 import ColorProcessingUpload from "./pages/ColorProcessingUpload";
 import NotFound from "./pages/NotFound";
+import Contact from "./pages/Contact";
+
 
 const queryClient = new QueryClient();
 
@@ -22,6 +24,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/cloud-removal-upload" element={<CloudRemovalUpload />} />
           <Route path="/color-processing-upload" element={<ColorProcessingUpload />} />
+          <Route path="/contact" element={<Contact />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
