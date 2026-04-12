@@ -29,6 +29,7 @@ const App = () => (
               <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
               <Route path="/cloud-removal-upload" element={<ProtectedRoute><CloudRemovalUpload /></ProtectedRoute>} />
               <Route path="/color-processing-upload" element={<ProtectedRoute><ColorProcessingUpload /></ProtectedRoute>} />
+              <Route path="/contact" element={<Contact />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
