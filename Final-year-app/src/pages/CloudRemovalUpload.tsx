@@ -2,15 +2,21 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ArrowLeft, Upload, CloudOff } from "lucide-react";
+import { ArrowLeft, Upload, CloudOff, Download } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { db , auth} from "@/lib/firebase";
+
 
 const CloudRemovalUpload = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [processedImage, setProcessedImage] = useState<string | null>(null);
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -24,7 +30,9 @@ const CloudRemovalUpload = () => {
         });
         return;
       }
-      
+
+      setSelectedFile(file);
+
       const reader = new FileReader();
       reader.onloadend = () => {
         setUploadedImage(reader.result as string);
@@ -69,6 +77,8 @@ const CloudRemovalUpload = () => {
 
       // Backend returns URL of processed image
       setProcessedImage(data.image_url);
+      await saveToFirebase(selectedFile, data.image_url);
+
 
       toast({
         title: "Processing complete",
@@ -84,6 +94,37 @@ const CloudRemovalUpload = () => {
       setIsProcessing(false);
     }
   };
+  const saveToFirebase = async (inputFile: File, outputURL: string) => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    setIsSaving(true);
+    try {
+      // Just save the record — no Storage uploads
+      await addDoc(collection(db, "users", user.uid, "uploads"), {
+        type: "cloud-removal",
+        inputFileName: inputFile.name,
+        outputURL, // localhost URL in dev, your deployed backend URL in prod
+        createdAt: serverTimestamp(),
+      });
+    } catch (err) {
+      console.error("Firebase save failed:", err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+  // ─────────────────────────────────────────────────────────────────────
+
+  // ── Download handler ─────────────────────────────────────────────── ← new
+  const handleDownload = async () => {
+    if (!processedImage) return;
+    const link = document.createElement("a");
+    link.href = processedImage;
+    link.download = "cloud-removed.png";
+    link.target = "_blank";
+    link.click();
+  };
+  // ─────────────────────────────────────────────────────────────────────
 
 
   return (

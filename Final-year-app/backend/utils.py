@@ -6,7 +6,11 @@
 import numpy as np
 from PIL import Image
 import tensorflow as tf
+import numpy as np
+from scipy.ndimage import convolve
+import logging
 
+logger = logging.getLogger(__name__)
 # ── Register custom layer BEFORE loading model ───────────────
 @tf.keras.utils.register_keras_serializable()
 class ResidualBlock(tf.keras.layers.Layer):
@@ -36,29 +40,89 @@ IMG_SIZE = 256   # must match training — do not change
 
 
 def preprocess_image_cloud(image: Image.Image) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Returns (gen_input, cloud_mask) where:
-      gen_input  shape [1, 256, 256, 4]  — RGB + mask channel
-      cloud_mask shape [256, 256, 1]     — for compositing later
-    """
-    # Resize to training resolution
     image = image.resize((IMG_SIZE, IMG_SIZE), Image.BILINEAR)
-    img   = np.array(image).astype("float32")
+    img   = np.array(image).astype("float32")   # [256,256,3] in [0,255]
 
-    # Normalize to [-1, 1]
-    img = img / 127.5 - 1.0                          # [256, 256, 3]
+    r, g, b = img[:,:,0], img[:,:,1], img[:,:,2]
 
-    # Cloud mask: bright pixels are likely clouds
-    # (same heuristic used at inference time during training)
-    gray      = np.mean(img, axis=-1, keepdims=True)  # [256, 256, 1]
-    cloud_mask = (gray > 0.6).astype("float32")       # 1 = cloud, 0 = clear
+    # ── Cue 1: brightness (catches thick white clouds) ───────
+    brightness   = (r + g + b) / 3.0
+    bright_mask  = brightness > 160.0           # lowered from 180
 
-    # Concatenate mask as 4th channel
-    gen_input = np.concatenate([img, cloud_mask], axis=-1)  # [256, 256, 4]
-    gen_input = np.expand_dims(gen_input, axis=0)           # [1, 256, 256, 4]
+    # ── Cue 2: low saturation (grey/white haze) ──────────────
+    max_c = np.maximum(np.maximum(r, g), b)
+    min_c = np.minimum(np.minimum(r, g), b)
+    sat   = np.where(max_c > 1e-5, (max_c - min_c) / max_c, 0.0)
+    low_sat_mask = sat < 0.30                   # raised from 0.25
 
-    return gen_input, cloud_mask
+    # ── Cue 3: blue-green dominance ──────────────────────────
+    # Thin clouds over vegetation look greenish-white.
+    # Their blue and green channels are both elevated vs red.
+    blue_green_dominant = ((b > r * 0.85) & (g > r * 0.80) & (brightness > 130.0))
 
+    # ── Cue 4: whiteness ratio ────────────────────────────────
+    # True clouds have R≈G≈B. Measure how close to grey.
+    mean_rgb  = (r + g + b) / 3.0
+    deviation = (np.abs(r - mean_rgb) +
+                 np.abs(g - mean_rgb) +
+                 np.abs(b - mean_rgb)) / (mean_rgb + 1e-5)
+    whiteness_mask = (deviation < 0.18) & (brightness > 120.0)
+
+    # ── Cue 5: relative brightness vs local neighbourhood ────
+    # Clouds are locally brighter than surrounding pixels.
+    # Use a blurred version as "local average" and find pixels
+    # significantly brighter than their surroundings.
+    from scipy.ndimage import uniform_filter, gaussian_filter
+    local_avg      = gaussian_filter(brightness, sigma=12)
+    local_contrast = brightness - local_avg
+    local_bright   = local_contrast > 12.0      # 12 DN above local avg
+
+    # ── Combine all cues ──────────────────────────────────────
+    # Strategy: be inclusive — catch anything that looks cloud-like
+    cloud_mask = (
+        (bright_mask & low_sat_mask)        |   # thick white clouds
+        (whiteness_mask & local_bright)     |   # thin haze, locally bright
+        (blue_green_dominant & local_bright)|   # semi-transparent clouds
+        (bright_mask & whiteness_mask)          # bright + white regardless of contrast
+    ).astype("float32")
+
+    # ── Morphological operations ──────────────────────────────
+    from scipy.ndimage import binary_dilation, binary_erosion, binary_fill_holes
+
+    # Fill small holes inside detected cloud regions
+    cloud_bool = cloud_mask.astype(bool)
+    cloud_bool = binary_fill_holes(cloud_bool)
+
+    # Erode slightly to remove noise specks (single bright pixels)
+    cloud_bool = binary_erosion(cloud_bool,
+                                structure=np.ones((2, 2)))
+
+    # Dilate to grow cloud edges — clouds have soft gradual boundaries
+    cloud_bool = binary_dilation(cloud_bool,
+                                 structure=np.ones((9, 9)))
+
+    cloud_mask = cloud_bool.astype("float32")
+
+    # ── Diagnostic ───────────────────────────────────────────
+    coverage = cloud_mask.mean() * 100
+    logger.info(
+        f"Cloud coverage: {coverage:.1f}%  |  "
+        f"bright+lowsat: {(bright_mask & low_sat_mask).mean()*100:.1f}%  |  "
+        f"whiteness+local: {(whiteness_mask & local_bright).mean()*100:.1f}%  |  "
+        f"bg_dominant: {(blue_green_dominant & local_bright).mean()*100:.1f}%"
+    )
+
+    if coverage < 1.0:
+        logger.warning("Mask still nearly empty — image may be cloud-free "
+                       "or thresholds need further lowering.")
+
+    # ── Normalize and build 4-channel input ──────────────────
+    img_norm      = img / 127.5 - 1.0
+    cloud_mask_ch = cloud_mask[:, :, np.newaxis]          # [256,256,1]
+    gen_input     = np.concatenate([img_norm, cloud_mask_ch], axis=-1)
+    gen_input     = np.expand_dims(gen_input, axis=0)     # [1,256,256,4]
+
+    return gen_input, cloud_mask_ch
 
 def postprocess_image_cloud(pred: np.ndarray) -> Image.Image:
     """Converts model output [1, 256, 256, 3] back to a PIL image."""

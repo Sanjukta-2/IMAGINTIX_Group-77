@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ArrowLeft, Upload, Palette } from "lucide-react";
+import { ArrowLeft, Upload, Palette, Download } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -13,11 +13,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";  // ← new
+import { collection, addDoc, serverTimestamp } from "firebase/firestore"; // ← new
+import {db, auth } from "@/lib/firebase";
 const ColorProcessingUpload = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null); // ← new
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);  
   const [processedImage, setProcessedImage] = useState<string | null>(null);
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -31,6 +36,8 @@ const ColorProcessingUpload = () => {
         });
         return;
       }
+       setSelectedFile(file); // ← new: keep a ref to the File object
+
       
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -72,7 +79,10 @@ const handleProcess = async () => {
 
     const data = await response.json();
     setProcessedImage(data.image_url);
-
+    
+    // ── Save to Firebase ──────────────────────────────────────── ← new
+    await saveToFirebase(selectedFile, data.image_url);
+      
     toast({
       title: "Processing complete",
       description: "False color image converted to true color",
@@ -88,6 +98,42 @@ const handleProcess = async () => {
     setIsProcessing(false);
   }
 };
+
+ // ── New function: upload input file + save output URL to Firestore ── ← new
+  const saveToFirebase = async (inputFile: File, outputURL: string) => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    setIsSaving(true);
+    try {
+      // Just save the record — no Storage uploads
+      await addDoc(collection(db, "users", user.uid, "uploads"), {
+        type: "cloud-removal",
+        inputFileName: inputFile.name,
+        outputURL, // localhost URL in dev, your deployed backend URL in prod
+        createdAt: serverTimestamp(),
+      });
+    } catch (err) {
+      console.error("Firebase save failed:", err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────────────────
+
+  // ── Download handler ─────────────────────────────────────────────── ← new
+  const handleDownload = async () => {
+    if (!processedImage) return;
+    const link = document.createElement("a");
+    link.href = processedImage;
+    link.download = "cloud-removed.png";
+    link.target = "_blank";
+    link.click();
+  };
+  // ─────────────────────────────────────────────────────────────────────
+
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border">

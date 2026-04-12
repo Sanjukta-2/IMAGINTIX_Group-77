@@ -14,8 +14,13 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useAuth } from "@/lib/AuthContext";
+import { signOut } from "firebase/auth";
+import { auth } from "@/lib/firebase";
+
 
 const Index = () => {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const scrollTargetRef = useRef<HTMLDivElement>(null);
   const { setTheme, theme } = useTheme();
@@ -53,12 +58,29 @@ const Index = () => {
 
         <div className="relative z-10 h-full flex flex-col">
           <header className="p-6 flex justify-between items-center">
-            <Button
-              variant="ghost"
-              className="text-foreground hover:text-primary hover:bg-primary/10 font-semibold text-lg"
-            >
-              Sign In
-            </Button>
+            {user ? (
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-muted-foreground hidden md:block">
+                  {user.email}
+                </span>
+                <Button
+                  variant="ghost"
+                  className="text-foreground hover:text-primary hover:bg-primary/10 font-semibold text-lg"
+                  onClick={() => signOut(auth)}
+                >
+                  Sign Out
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="ghost"
+                className="text-foreground hover:text-primary hover:bg-primary/10 font-semibold text-lg"
+                onClick={() => navigate("/signin")}
+              >
+                Sign In
+              </Button>
+            )}
+
             
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
