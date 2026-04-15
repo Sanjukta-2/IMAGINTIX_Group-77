@@ -9,7 +9,7 @@ Users upload an image via a web interface and receive a processed, cloud-free re
 - Frontend: React + TypeScript
 - Backend: FastAPI (Python)
 - AI Model: GAN
-- Database: PostgreSQL (Azure VM setup)
+- Database: Firestore
 - Deployment: Azure VM
 
 ---
